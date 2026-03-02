@@ -4,17 +4,18 @@ import torch
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import LambdaLR
 
-from core.net import SandNet
+from config import Config
+from core.net import BakeNet
 from core.heo import Heo
 from core.palette import Palette
-from data.dataset import DIV2KDataset
+from core.augments import BakeAugment
+from data.dataset import BakeDataset
 from utils import get_kst_logger, EMA, CheckpointManager, Visualizer
 
 
 def get_args():
-    parser = argparse.ArgumentParser(description="SandNet Training Pipeline")
+    parser = argparse.ArgumentParser(description="BakeNet Training Pipeline")
 
-    # [필수] 재시작 / 재개 완벽 분리
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
         "--restart", action="store_true", help="처음부터 새롭게 학습을 시작합니다."
@@ -26,80 +27,57 @@ def get_args():
         help="지정한 체크포인트부터 학습을 재개합니다.",
     )
 
-    # [데이터] DIV2K 자동 다운로드 지원
-    parser.add_argument(
-        "--download",
-        action="store_true",
-        help="DIV2K 데이터셋이 없으면 자동으로 다운로드합니다.",
-    )
-    parser.add_argument(
-        "--data_dir", type=str, default="data", help="데이터셋 루트 폴더 경로"
-    )
-
-    # [하이퍼파라미터]
-    parser.add_argument("--epochs", type=int, default=1000, help="총 학습 에폭")
-    parser.add_argument("--batch_size", type=int, default=4, help="배치 크기")
-    parser.add_argument(
-        "--num_workers", type=int, default=4, help="데이터 로더 워커 수"
-    )
-    parser.add_argument("--lr", type=float, default=1e-4, help="기본 학습률")
-
     return parser.parse_args()
 
 
 def main():
     args = get_args()
+    cfg = Config()
 
     # 1. 시스템 및 로거 설정
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    logger = get_kst_logger("SandNet", log_dir="logs")
+    logger = get_kst_logger("BakeNet", log_dir=cfg.log_dir)
     logger.info(
         f"디바이스: {device} | 학습 모드: {'Resume' if args.resume else 'Restart'}"
     )
 
-    # 2. 데이터셋 및 로더 준비 (DIV2K 다운로드 및 로드 캡슐화)
+    # 2. 데이터셋 및 로더 준비
     logger.info("데이터셋 초기화 중...")
-    dataset = DIV2KDataset(
-        root_dir=args.data_dir, scale_factor=4, download=args.download
-    )
+    dataset = BakeDataset(root_dir=cfg.data_dir, patch_size=cfg.patch_size)
     dataloader = DataLoader(
         dataset,
-        batch_size=args.batch_size,
+        batch_size=cfg.batch_size,
         shuffle=True,
-        num_workers=args.num_workers,
+        num_workers=cfg.num_workers,
         pin_memory=True,
         drop_last=True,
     )
 
     # 3. 모델, 손실 함수, 옵티마이저 초기화
-    model = SandNet().to(device)
+    model = BakeNet(bottleneck_dim=cfg.bottleneck_dim).to(device)
     criterion = Heo.HeoLoss().to(device)
-    optimizer = Heo.Heopimizer(model, lr=args.lr)
+    optimizer = Heo.Heopimizer(model, lr=cfg.lr, weight_decay=cfg.weight_decay)
 
-    # [Color Space] 색공간 변환기 (학습 파라미터 없음)
-    srgb2oklab = Palette.sRGBtoOklabP().to(device)
+    # [Color Space] 시각화 전용 역변환기 (학습 파라미터 없음)
     oklab2srgb = Palette.OklabPtosRGB().to(device)
 
-    # 4. 유틸리티 (EMA, 체크포인트, 시각화) 초기화
-    EMA_DECAY = 0.999
-    ema = EMA(model, decay=EMA_DECAY)
-    ckpt_manager = CheckpointManager(save_dir="checkpoints", max_keep=5)
-    visualizer = Visualizer(output_dir="outputs")
+    # [Augmentation] BakeAugment: sRGB → (degraded_oklab, clean_oklab) 쌍 생성
+    augment = BakeAugment(strength=cfg.augment_strength).to(device)
 
-    # 5. 스케줄러 설정 (10 Epoch Step-wise Warm-up + Step-wise Exponential Decay)
-    SCHEDULER_GAMMA = 0.999996
-    warmup_epochs = 10
+    # 4. 유틸리티 (EMA, 체크포인트, 시각화) 초기화
+    ema = EMA(model, decay=cfg.ema_decay)
+    ckpt_manager = CheckpointManager(save_dir=cfg.checkpoint_dir, max_keep=cfg.max_keep)
+    visualizer = Visualizer(output_dir=cfg.output_dir)
+
+    # 5. 스케줄러 설정 (Step-wise Warm-up + Step-wise Exponential Decay)
     steps_per_epoch = len(dataloader)
-    warmup_steps = warmup_epochs * steps_per_epoch
+    warmup_steps = cfg.warmup_epochs * steps_per_epoch
 
     def lr_lambda(current_step: int):
         if current_step < warmup_steps:
-            # Warm-up 구간: 0.0에서 1.0으로 선형 증가
             return float(current_step) / float(max(1, warmup_steps))
         else:
-            # Decay 구간: 지정된 Gamma 값으로 매 Step마다 지수적 감소
-            decay_steps = current_step - warmup_steps
-            return SCHEDULER_GAMMA**decay_steps
+            return cfg.scheduler_gamma ** (current_step - warmup_steps)
 
     scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
 
@@ -116,19 +94,16 @@ def main():
         logger.info("새로운 모델 가중치로 학습을 시작합니다. (--restart)")
 
     # 7. 메인 학습 루프
-    for epoch in range(start_epoch, args.epochs):
+    for epoch in range(start_epoch, cfg.epochs):
         model.train()
         epoch_loss = 0.0
 
-        for batch_idx, (in_srgb, gt_srgb) in enumerate(dataloader):
-            # 텐서를 디바이스로 이동
-            in_srgb = in_srgb.to(device, non_blocking=True)
+        for batch_idx, gt_srgb in enumerate(dataloader):
             gt_srgb = gt_srgb.to(device, non_blocking=True)
 
-            # [Color Space] sRGB -> OklabP 변환 (역전파 그래프에서 분리)
+            # [BakeAugment] 깨끗한 이미지(gt_srgb)를 열화시켜 (degraded, clean) OklabP 쌍 생성
             with torch.no_grad():
-                in_oklab = srgb2oklab(in_srgb)
-                gt_oklab = srgb2oklab(gt_srgb)
+                in_oklab, gt_oklab = augment(gt_srgb)
 
             # [Forward]
             pred_oklab = model(in_oklab)
@@ -151,29 +126,29 @@ def main():
         avg_loss = epoch_loss / steps_per_epoch
         current_lr = optimizer.param_groups[0]["lr"]
         logger.info(
-            f"Epoch [{epoch:04d}/{args.epochs:04d}] Loss: {avg_loss:.6f} | LR: {current_lr:.8f}"
+            f"Epoch [{epoch:04d}/{cfg.epochs:04d}] Loss: {avg_loss:.6f} | LR: {current_lr:.8f}"
         )
 
         # 8. Epoch 종료 후 평가 및 시각화 (EMA 가중치 적용)
-        # 마지막 배치의 데이터(in_srgb, gt_srgb, in_oklab)를 대표 이미지로 재사용합니다.
         ema.apply_shadow()
         model.eval()
 
         with torch.no_grad():
-            # EMA가 적용된 모델로 추론
             hr_oklab = model(in_oklab)
 
             # [Color Space] 시각화를 위해 OklabP -> sRGB로 원상 복구
             hr_srgb = oklab2srgb(hr_oklab)
+            in_srgb_viz = oklab2srgb(in_oklab)
+            gt_srgb_viz = oklab2srgb(gt_oklab)
 
-            # (LR | HR | GT) 순서로 병합하여 outputs/ 폴더에 저장
-            visualizer.save_epoch_result(epoch, in_srgb, hr_srgb, gt_srgb)
+            # (degraded | pred | clean) 순서로 병합하여 저장
+            visualizer.save_epoch_result(epoch, in_srgb_viz, hr_srgb, gt_srgb_viz)
 
         # 다음 Epoch 학습을 위해 원본 가중치로 복구
         ema.restore()
         model.train()
 
-        # 9. 체크포인트 저장 (최근 5개 유지)
+        # 9. 체크포인트 저장
         saved_path = ckpt_manager.save(epoch + 1, model, ema, optimizer, scheduler)
         logger.info(f"Epoch {epoch} 체크포인트 저장 완료: {saved_path}")
 

@@ -1,4 +1,3 @@
-import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -17,12 +16,13 @@ class BakeAugment(nn.Module):
     AI가 피사체의 구조(Structure)를 단서로 삼아 명확한 역함수를 학습할 수 있도록 설계되었습니다.
     """
 
-    def __init__(self, hsl_grid_size=33):
+    def __init__(self, hsl_grid_size=33, strength=0.12):
         super().__init__()
         # 시각적으로 균일한(Perceptually Uniform) OklabP 공간을 활용하여
         # 인간의 인지와 수학적 연산의 궤를 완벽히 일치시킵니다. (값 범위: [-1, 1])
         self.to_oklabp = Palette.sRGBtoOklabP()
         self.G = hsl_grid_size
+        self.strength = strength
 
     # =================================================================
     # 1. 1D Curve Generators & Application (Global Tone & Color)
@@ -180,16 +180,18 @@ class BakeAugment(nn.Module):
 
         # 1. 색공간을 분할하는 주파수를 동적으로 할당하여(3~5),
         # 광범위한 톤 변화부터 국소적인 색상 틀어짐까지 다채로운 패턴을 생성합니다.
-        ctrl_res = random.randint(3, 5)
+        ctrl_res = torch.randint(3, 6, (1,), device=device).item()
         polar_grid = self._make_hsl_grid(B, strength, ctrl_res, device, dtype)
 
         # 2. 원본(Target)의 깨끗한 a, b 좌표를 나침반 삼아,
         # 2D 왜곡 맵에서 해당 픽셀이 받아야 할 극좌표 변형의 크기를 샘플링합니다.
+        # OklabP의 a·b는 ap=8a, bp=8b로 대략 [-4, 4] 범위 → grid_sample은 [-1, 1] 정규화 좌표 필요
         ab_coords_tgt = target_t[:, 1:3, :, :].permute(0, 2, 3, 1)
+        ab_normalized = ab_coords_tgt / 4.0
 
         sampled_vars = F.grid_sample(
             polar_grid,
-            ab_coords_tgt,
+            ab_normalized,
             mode="bilinear",
             padding_mode="border",
             align_corners=True,
@@ -272,7 +274,7 @@ class BakeAugment(nn.Module):
         # 통제 변수 strength를 곡선의 최대 진폭 한계치로 전달합니다.
         ctrl_x_L, ctrl_y_L = self._make_random_curve(B, 399, strength, device, dtype)
         delta_L = self._apply_curve(L_tgt, ctrl_x_L, ctrl_y_L) - L_tgt
-        L_out = L_in + delta_L * 2.0
+        L_out = L_in + delta_L
 
         # 2. a, b 채널: 전역 화이트 밸런스 틀어짐 (Global Color Shift)
         # strength를 기준으로 평행 이동의 범위를 [-strength/2, +strength/2]로 동기화합니다.
@@ -312,14 +314,13 @@ class BakeAugment(nn.Module):
 
         # --- [순차적 열화 파이프라인 (Degradation Pipeline)] ---
         degradations = [
-            lambda inp: self.apply_oklabp_curve(inp, target, strength=0.12),
-            lambda inp: self.apply_hsl(inp, target, strength=0.12),
-            lambda inp: self.apply_color_wheels(inp, target, strength=0.12),
+            lambda inp: self.apply_oklabp_curve(inp, target, strength=self.strength),
+            lambda inp: self.apply_hsl(inp, target, strength=self.strength),
+            lambda inp: self.apply_color_wheels(inp, target, strength=self.strength),
         ]
 
-        random.shuffle(degradations)
-
-        for apply_degradation in degradations:
-            input_t = apply_degradation(input_t)
+        order = torch.randperm(3, device=device)
+        for i in order.tolist():
+            input_t = degradations[i](input_t)
 
         return input_t, target

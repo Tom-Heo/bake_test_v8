@@ -125,7 +125,8 @@ class CheckpointManager:
 
         ckpt = torch.load(path, map_location="cpu")
         model.load_state_dict(ckpt["model_state"])
-        ema.shadow = ckpt["ema_state"]
+        device = next(model.parameters()).device
+        ema.shadow = {k: v.to(device) for k, v in ckpt["ema_state"].items()}
         optimizer.load_state_dict(ckpt["optimizer_state"])
         scheduler.load_state_dict(ckpt["scheduler_state"])
 
