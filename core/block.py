@@ -55,6 +55,8 @@ class Stage(nn.Module):
         self.block2 = Block(dim)
         self.block3 = Block(dim)
         self.block4 = Block(dim)
+        self.block5 = Block(dim)
+        self.block6 = Block(dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
 
@@ -62,6 +64,8 @@ class Stage(nn.Module):
         x = self.block2(x)
         x = self.block3(x)
         x = self.block4(x)
+        x = self.block5(x)
+        x = self.block6(x)
         return x
 
 
@@ -86,22 +90,6 @@ class Bottleneck(nn.Module):
         self.block14 = Block(dim)
         self.block15 = Block(dim)
         self.block16 = Block(dim)
-        self.block17 = Block(dim)
-        self.block18 = Block(dim)
-        self.block19 = Block(dim)
-        self.block20 = Block(dim)
-        self.block21 = Block(dim)
-        self.block22 = Block(dim)
-        self.block23 = Block(dim)
-        self.block24 = Block(dim)
-        self.block25 = Block(dim)
-        self.block26 = Block(dim)
-        self.block27 = Block(dim)
-        self.block28 = Block(dim)
-        self.block29 = Block(dim)
-        self.block30 = Block(dim)
-        self.block31 = Block(dim)
-        self.block32 = Block(dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.block1(x)
@@ -120,21 +108,4 @@ class Bottleneck(nn.Module):
         x = self.block14(x)
         x = self.block15(x)
         x = self.block16(x)
-        x = self.block17(x)
-        x = self.block18(x)
-        x = self.block19(x)
-        x = self.block20(x)
-        x = self.block21(x)
-        x = self.block22(x)
-        x = self.block23(x)
-        x = self.block24(x)
-        x = self.block25(x)
-        x = self.block26(x)
-        x = self.block27(x)
-        x = self.block28(x)
-        x = self.block29(x)
-        x = self.block30(x)
-        x = self.block31(x)
-        x = self.block32(x)
-
         return x
