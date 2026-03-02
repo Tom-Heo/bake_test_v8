@@ -31,16 +31,14 @@ class Block(nn.Module):
         self.dim = dim
 
         self.conv0001 = nn.Conv2d(dim, dim * 3, 1, 1, 0)
-        self.conv001 = nn.Conv2d(dim * 3, dim * 3, 1, 1, 0)
-        self.act1 = Heo.HeLU2d(dim * 3)
+        self.act1 = Heo.HeLU2d(dim * 3, lr_scale=dim)
         self.simple_gate = SimpleGate()
         self.conv01 = nn.Conv2d(dim, dim, 3, 1, 1, groups=dim)
-        self.residual_gate = Heo.HeoGate2d(dim)
+        self.residual_gate = Heo.HeoGate2d(dim, lr_scale=dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         raw = x
         x = self.conv0001(x)
-        x = self.conv001(x)
         x = self.act1(x)
         x = self.simple_gate(x)
         x = self.conv01(x)

@@ -45,12 +45,12 @@ class Heo:
         입력: (N,C,H,W)
         """
 
-        def __init__(self, channels: int):
+        def __init__(self, channels: int, lr_scale: float):
             super().__init__()
             c = int(channels)
             self.channels = c
+            self.lr_scale = lr_scale
 
-            # 원본 HeLU와 같은 파라미터 의미(채널별)
             self.alpha = nn.Parameter(torch.full((c,), 1.0))
             self.beta = nn.Parameter(torch.full((c,), -1.0))
             self.redweight = nn.Parameter(torch.empty(c).normal_(mean=0.0, std=0.45))
@@ -86,8 +86,8 @@ class Heo:
 
     class Heopimizer(AdamW):
         """
-        HeLU 및 HeLU2d의 파라미터가 0으로 수렴하지 않도록 Weight Decay를 해제하고,
-        각 레이어의 채널 차원(dim)에 정확히 비례하여 학습률(lr * dim)을 부여하는 맞춤형 옵티마이저입니다.
+        HeLU2d / HeoGate2d 모듈의 .lr_scale 속성과 base lr을 조합하여
+        파라미터 그룹을 구성하고, Weight Decay를 해제하는 맞춤형 옵티마이저입니다.
         """
 
         def __init__(
@@ -97,41 +97,35 @@ class Heo:
             weight_decay: float = 1e-4,
             **kwargs,
         ):
-            base_params = []
-            # dim(채널 수)을 키(key)로 삼아 파라미터들을 동적으로 그룹화합니다.
-            helu_by_dim = defaultdict(list)
+            heo_param_ids = set()
+            helu_by_lr = defaultdict(list)
 
-            # 1. 모델 내부 파라미터 순회 및 분류
-            for name, param in model.named_parameters():
-                if not param.requires_grad:
-                    continue
+            for module in model.modules():
+                if isinstance(module, (Heo.HeLU2d, Heo.HeoGate2d)):
+                    effective_lr = lr * module.lr_scale
+                    for param in module.parameters(recurse=False):
+                        if param.requires_grad:
+                            helu_by_lr[effective_lr].append(param)
+                            heo_param_ids.add(id(param))
 
-                # HeLU 계열 파라미터 식별
-                if any(
-                    key in name for key in ("alpha", "beta", "redweight", "blueweight")
-                ):
-                    # 파라미터의 첫 번째 차원 크기가 곧 해당 레이어의 dim(channels)입니다.
-                    dim = param.shape[0]
-                    helu_by_dim[dim].append(param)
-                else:
-                    base_params.append(param)
+            base_params = [
+                p for p in model.parameters()
+                if p.requires_grad and id(p) not in heo_param_ids
+            ]
 
-            # 2. 기본 파라미터 그룹 생성
             param_groups = [
                 {"params": base_params, "lr": lr, "weight_decay": weight_decay}
             ]
 
-            # 3. HeLU 파라미터들을 차원(dim)별로 묶어 그룹 추가
-            for dim, params in helu_by_dim.items():
+            for heo_lr, params in helu_by_lr.items():
                 param_groups.append(
                     {
                         "params": params,
-                        "lr": lr * dim,  # 요청하신 대로 lr에 dim을 곱하여 증폭
-                        "weight_decay": 0.0,  # Weight Decay 해제
+                        "lr": heo_lr,
+                        "weight_decay": 0.0,
                     }
                 )
 
-            # 4. 부모 클래스(AdamW) 초기화
             super().__init__(param_groups, **kwargs)
 
     class HeoGate(nn.Module):
@@ -147,10 +141,11 @@ class Heo:
             return (alpha * x + beta * raw) / 2
 
     class HeoGate2d(nn.Module):
-        def __init__(self, channels: int):
+        def __init__(self, channels: int, lr_scale: float):
             super().__init__()
             c = int(channels)
             self.channels = c
+            self.lr_scale = lr_scale
 
             self.alpha = nn.Parameter(torch.full((c,), 0.0))
             self.beta = nn.Parameter(torch.full((c,), 0.0))

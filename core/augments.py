@@ -16,7 +16,7 @@ class BakeAugment(nn.Module):
     AI가 피사체의 구조(Structure)를 단서로 삼아 명확한 역함수를 학습할 수 있도록 설계되었습니다.
     """
 
-    def __init__(self, hsl_grid_size=33, strength=0.12):
+    def __init__(self, hsl_grid_size=33, strength=0.25):
         super().__init__()
         # 시각적으로 균일한(Perceptually Uniform) OklabP 공간을 활용하여
         # 인간의 인지와 수학적 연산의 궤를 완벽히 일치시킵니다. (값 범위: [-1, 1])
