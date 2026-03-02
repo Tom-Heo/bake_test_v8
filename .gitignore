@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Training outputs
+checkpoints/
+outputs/
+logs/
+
+# Data
+dataset/
+
+# Virtual environment
+venv/
+.venv/
+
+# IDE / OS
+.vscode/
+.idea/
+.cursor/
+.DS_Store
+Thumbs.db
