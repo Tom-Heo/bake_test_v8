@@ -132,6 +132,10 @@ class CheckpointManager:
 
         return ckpt["epoch"]
 
+    def find_latest(self):
+        ckpts = sorted(glob.glob(os.path.join(self.save_dir, "ckpt_epoch_*.pt")))
+        return ckpts[-1] if ckpts else None
+
     def _cleanup(self):
         """가장 오래된 체크포인트 삭제 (이름 순 정렬 보장)"""
         ckpts = sorted(glob.glob(os.path.join(self.save_dir, "ckpt_epoch_*.pt")))

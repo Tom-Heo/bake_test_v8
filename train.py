@@ -22,9 +22,10 @@ def get_args():
     )
     group.add_argument(
         "--resume",
-        type=str,
+        nargs="?",
+        const="latest",
         metavar="PATH",
-        help="지정한 체크포인트부터 학습을 재개합니다.",
+        help="학습을 재개합니다. 경로 생략 시 가장 최근 체크포인트를 자동으로 불러옵니다.",
     )
 
     return parser.parse_args()
@@ -84,11 +85,18 @@ def main():
     # 6. Restart / Resume 분기 처리
     start_epoch = 0
     if args.resume:
-        if not os.path.exists(args.resume):
-            raise FileNotFoundError(f"체크포인트를 찾을 수 없습니다: {args.resume}")
-        start_epoch = ckpt_manager.load(args.resume, model, ema, optimizer, scheduler)
+        ckpt_path = (
+            args.resume if args.resume != "latest" else ckpt_manager.find_latest()
+        )
+        if ckpt_path is None:
+            raise FileNotFoundError(
+                f"재개할 체크포인트가 없습니다: {cfg.checkpoint_dir}"
+            )
+        if not os.path.exists(ckpt_path):
+            raise FileNotFoundError(f"체크포인트를 찾을 수 없습니다: {ckpt_path}")
+        start_epoch = ckpt_manager.load(ckpt_path, model, ema, optimizer, scheduler)
         logger.info(
-            f"[{args.resume}] 로드 완료. Epoch {start_epoch}부터 학습을 재개합니다."
+            f"[{ckpt_path}] 로드 완료. Epoch {start_epoch}부터 학습을 재개합니다."
         )
     else:
         logger.info("새로운 모델 가중치로 학습을 시작합니다. (--restart)")
