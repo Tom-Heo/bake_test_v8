@@ -6,7 +6,7 @@ class Config:
     # Data
     data_dir: str = "dataset"
     patch_size: int = 256
-    resize_to: int = 512
+    resize_to: int = 384
 
     # Training
     epochs: int = 1000
@@ -19,7 +19,7 @@ class Config:
     bottleneck_dim: int = 1024
 
     # Augmentation
-    augment_strength: float = 0.12
+    augment_strength: float = 0.25
 
     # Scheduler
     scheduler_gamma: float = 0.999996
