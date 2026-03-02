@@ -5,12 +5,12 @@ from dataclasses import dataclass
 class Config:
     # Data
     data_dir: str = "dataset"
-    patch_size: int = 384
-    resize_to: int = 512
+    patch_size: int = 512
+    resize_to: int = 768
 
     # Training
     epochs: int = 1000
-    batch_size: int = 4
+    batch_size: int = 1
     num_workers: int = 4
     lr: float = 1e-4
     weight_decay: float = 1e-4
@@ -33,7 +33,7 @@ class Config:
     max_keep: int = 5
 
     # Logging
-    log_interval: int = 16
+    log_interval: int = 64
 
     # Output
     output_dir: str = "outputs"
