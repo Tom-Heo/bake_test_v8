@@ -31,7 +31,7 @@ class Block(nn.Module):
         self.dim = dim
 
         self.conv0001 = nn.Conv2d(dim, dim * 3, 1, 1, 0)
-        self.conv001 = nn.Conv2d(dim * 3, dim * 3, 1, 1, 0)
+        self.conv001 = nn.Conv2d(dim * 3, dim * 3, 1, 1, 0, groups=3)
         self.act1 = Heo.HeLU2d(dim * 3)
         self.simple_gate = SimpleGate()
         self.conv01 = nn.Conv2d(dim, dim, 3, 1, 1, groups=dim)
