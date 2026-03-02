@@ -6,6 +6,7 @@ class Config:
     # Data
     data_dir: str = "dataset"
     patch_size: int = 256
+    resize_to: int = 512
 
     # Training
     epochs: int = 1000
@@ -30,6 +31,9 @@ class Config:
     # Checkpoint
     checkpoint_dir: str = "checkpoints"
     max_keep: int = 5
+
+    # Logging
+    log_interval: int = 16
 
     # Output
     output_dir: str = "outputs"

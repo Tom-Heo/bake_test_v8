@@ -43,7 +43,7 @@ def main():
 
     # 2. 데이터셋 및 로더 준비
     logger.info("데이터셋 초기화 중...")
-    dataset = BakeDataset(root_dir=cfg.data_dir, patch_size=cfg.patch_size)
+    dataset = BakeDataset(root_dir=cfg.data_dir, patch_size=cfg.patch_size, resize_to=cfg.resize_to)
     dataloader = DataLoader(
         dataset,
         batch_size=cfg.batch_size,
@@ -121,6 +121,13 @@ def main():
             ema.update()
 
             epoch_loss += loss.item()
+
+            global_step = epoch * steps_per_epoch + batch_idx + 1
+            if global_step % cfg.log_interval == 0:
+                current_lr = optimizer.param_groups[0]["lr"]
+                logger.info(
+                    f"[Step {global_step:06d}] Epoch {epoch:04d} | Batch {batch_idx+1}/{steps_per_epoch} | Loss: {loss.item():.6f} | LR: {current_lr:.8f}"
+                )
 
         # Epoch 통계 로깅
         avg_loss = epoch_loss / steps_per_epoch

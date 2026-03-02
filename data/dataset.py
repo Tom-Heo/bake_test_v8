@@ -8,6 +8,7 @@ from pathlib import Path
 from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.transforms import functional as TF
+from torchvision.transforms import InterpolationMode
 from PIL import Image
 
 SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp"}
@@ -19,9 +20,10 @@ class BakeDataset(Dataset):
     지정 폴더 내 모든 이미지를 로드하고 Random Crop하여 단일 sRGB 텐서를 반환합니다.
     """
 
-    def __init__(self, root_dir: str = "dataset", patch_size: int = 512):
+    def __init__(self, root_dir: str = "dataset", patch_size: int = 512, resize_to: int = 512):
         self.root_dir = Path(root_dir)
         self.patch_size = patch_size
+        self.resize_to = resize_to
 
         self.paths = sorted(
             p for p in self.root_dir.rglob("*")
@@ -43,9 +45,16 @@ class BakeDataset(Dataset):
         img = Image.open(self.paths[idx]).convert("RGB")
 
         w, h = img.size
+        if min(w, h) > self.resize_to:
+            scale = self.resize_to / min(w, h)
+            img = TF.resize(img, [round(h * scale), round(w * scale)],
+                            interpolation=InterpolationMode.LANCZOS)
+
+        w, h = img.size
         if w < self.patch_size or h < self.patch_size:
             scale = self.patch_size / min(w, h)
-            img = TF.resize(img, [round(h * scale), round(w * scale)])
+            img = TF.resize(img, [round(h * scale), round(w * scale)],
+                            interpolation=InterpolationMode.LANCZOS)
 
         i, j, th, tw = transforms.RandomCrop.get_params(
             img, (self.patch_size, self.patch_size)
