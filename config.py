@@ -5,7 +5,7 @@ from dataclasses import dataclass
 class Config:
     # Data
     data_dir: str = "dataset"
-    patch_size: int = 512
+    patch_size: int = 256
 
     # Training
     epochs: int = 1000
