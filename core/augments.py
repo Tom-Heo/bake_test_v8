@@ -305,9 +305,6 @@ class BakeAugment(nn.Module):
         flip_h_mask = torch.rand(B, 1, 1, 1, device=device, dtype=dtype) < 0.5
         x = torch.where(flip_h_mask, torch.flip(x, [3]), x)
 
-        flip_v_mask = torch.rand(B, 1, 1, 1, device=device, dtype=dtype) < 0.5
-        x = torch.where(flip_v_mask, torch.flip(x, [2]), x)
-
         # --- [색공간 변환 (Color Space Conversion)] ---
         target = self.to_oklabp(x)
         input_t = target.clone()

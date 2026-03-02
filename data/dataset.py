@@ -11,6 +11,8 @@ from torchvision.transforms import functional as TF
 from torchvision.transforms import InterpolationMode
 from PIL import Image
 
+Image.MAX_IMAGE_PIXELS = None
+
 SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp"}
 
 
