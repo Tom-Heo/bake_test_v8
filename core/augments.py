@@ -311,9 +311,13 @@ class BakeAugment(nn.Module):
 
         # --- [순차적 열화 파이프라인 (Degradation Pipeline)] ---
         degradations = [
-            lambda inp: self.apply_oklabp_curve(inp, target, strength=self.strength),
-            lambda inp: self.apply_hsl(inp, target, strength=self.strength),
-            lambda inp: self.apply_color_wheels(inp, target, strength=self.strength),
+            lambda inp: self.apply_oklabp_curve(
+                inp, target, strength=self.strength * 0.6
+            ),
+            lambda inp: self.apply_hsl(inp, target, strength=self.strength * 1.2),
+            lambda inp: self.apply_color_wheels(
+                inp, target, strength=self.strength * 1.2
+            ),
         ]
 
         order = torch.randperm(3, device=device)
