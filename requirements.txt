@@ -1,3 +1,5 @@
 torch
 torchvision
 Pillow
+gradio
+gradio_imageslider
