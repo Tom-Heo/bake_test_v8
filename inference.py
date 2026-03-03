@@ -14,8 +14,8 @@ from core.palette import Palette
 
 SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp"}
 
-TILE_SIZE = 512
-TILE_OVERLAP = 128
+TILE_SIZE = 2048
+TILE_OVERLAP = 512
 
 
 def load_model(checkpoint_path: str, device: torch.device, cfg: Config) -> BakeNet:
@@ -45,8 +45,9 @@ def _make_blend_weight(h, w, overlap):
     return vert.unsqueeze(1) * horiz.unsqueeze(0)
 
 
-def _tiled_forward(x, model, srgb2oklab, oklab2srgb, device,
-                   tile_size=TILE_SIZE, overlap=TILE_OVERLAP):
+def _tiled_forward(
+    x, model, srgb2oklab, oklab2srgb, device, tile_size=TILE_SIZE, overlap=TILE_OVERLAP
+):
     _, _, H, W = x.shape
     stride = tile_size - overlap
 
@@ -67,13 +68,15 @@ def _tiled_forward(x, model, srgb2oklab, oklab2srgb, device,
         for j in range(nw):
             top = i * stride
             left = j * stride
-            tile = x[:, :, top:top + tile_size, left:left + tile_size].to(device)
+            tile = x[:, :, top : top + tile_size, left : left + tile_size].to(device)
 
             with torch.no_grad():
                 result = oklab2srgb(model(srgb2oklab(tile)))
 
-            output[:, :, top:top + tile_size, left:left + tile_size] += result.cpu() * blend
-            weights[:, :, top:top + tile_size, left:left + tile_size] += blend
+            output[:, :, top : top + tile_size, left : left + tile_size] += (
+                result.cpu() * blend
+            )
+            weights[:, :, top : top + tile_size, left : left + tile_size] += blend
 
     output /= weights.clamp(min=1e-8)
     return output[:, :, :H, :W]
@@ -145,7 +148,8 @@ def main():
     elif input_path.is_dir():
         output_path.mkdir(parents=True, exist_ok=True)
         images = sorted(
-            p for p in input_path.rglob("*")
+            p
+            for p in input_path.rglob("*")
             if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
         )
         if not images:
