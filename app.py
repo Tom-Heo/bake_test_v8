@@ -52,21 +52,24 @@ def main():
 
     def process(image_path: str):
         if image_path is None:
-            return None, None
+            raise gr.Error("이미지를 먼저 업로드해 주세요.")
 
-        result_tensor = process_image(
-            Path(image_path), model, srgb2oklab, oklab2srgb, device
-        )
+        try:
+            result_tensor = process_image(
+                Path(image_path), model, srgb2oklab, oklab2srgb, device
+            )
 
-        output_dir = tempfile.mkdtemp()
-        output_name = f"{Path(image_path).stem}_baked.png"
-        output_path = Path(output_dir) / output_name
-        save_image(result_tensor, str(output_path))
+            output_dir = tempfile.mkdtemp()
+            output_name = f"{Path(image_path).stem}_baked.png"
+            output_path = Path(output_dir) / output_name
+            save_image(result_tensor, str(output_path))
 
-        original = Image.open(image_path).convert("RGB")
-        result = Image.open(output_path).convert("RGB")
+            original = Image.open(image_path).convert("RGB")
+            result = Image.open(output_path).convert("RGB")
 
-        return (original, result), str(output_path)
+            return (original, result), str(output_path)
+        except Exception as e:
+            raise gr.Error(f"{type(e).__name__}: {e}")
 
     with gr.Blocks(title="BakeNet") as demo:
         gr.Markdown("# BakeNet")
