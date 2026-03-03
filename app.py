@@ -82,7 +82,7 @@ def main():
             outputs=[slider, download],
         )
 
-    demo.launch(server_name=args.host, server_port=args.port)
+    demo.launch(server_name=args.host, server_port=args.port, share=True)
 
 
 if __name__ == "__main__":
