@@ -34,7 +34,7 @@ def find_latest_checkpoint(checkpoint_dir: str) -> Path:
 def parse_args():
     parser = argparse.ArgumentParser(description="BakeNet Web App")
     parser.add_argument("--checkpoint", type=str, default=None, help="체크포인트 파일 경로")
-    parser.add_argument("--host", type=str, default="127.0.0.1")
+    parser.add_argument("--host", type=str, default="0.0.0.0")
     parser.add_argument("--port", type=int, default=7860)
     return parser.parse_args()
 
