@@ -1,4 +1,5 @@
 import argparse
+import math
 from pathlib import Path
 
 import torch
@@ -12,6 +13,9 @@ from core.net import BakeNet
 from core.palette import Palette
 
 SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp"}
+
+TILE_SIZE = 512
+TILE_OVERLAP = 128
 
 
 def load_model(checkpoint_path: str, device: torch.device, cfg: Config) -> BakeNet:
@@ -29,15 +33,63 @@ def load_model(checkpoint_path: str, device: torch.device, cfg: Config) -> BakeN
     return model
 
 
+def _make_blend_weight(h, w, overlap):
+    vert = torch.ones(h)
+    horiz = torch.ones(w)
+    if overlap > 0:
+        ramp = torch.linspace(0, 1, overlap + 2)[1:-1]
+        vert[:overlap] = ramp
+        vert[-overlap:] = ramp.flip(0)
+        horiz[:overlap] = ramp
+        horiz[-overlap:] = ramp.flip(0)
+    return vert.unsqueeze(1) * horiz.unsqueeze(0)
+
+
+def _tiled_forward(x, model, srgb2oklab, oklab2srgb, device,
+                   tile_size=TILE_SIZE, overlap=TILE_OVERLAP):
+    _, _, H, W = x.shape
+    stride = tile_size - overlap
+
+    nh = max(1, math.ceil((H - overlap) / stride))
+    nw = max(1, math.ceil((W - overlap) / stride))
+
+    need_h = (nh - 1) * stride + tile_size
+    need_w = (nw - 1) * stride + tile_size
+
+    if need_h > H or need_w > W:
+        x = F.pad(x, (0, max(0, need_w - W), 0, max(0, need_h - H)), mode="reflect")
+
+    blend = _make_blend_weight(tile_size, tile_size, overlap)
+    output = torch.zeros(1, 3, need_h, need_w)
+    weights = torch.zeros(1, 1, need_h, need_w)
+
+    for i in range(nh):
+        for j in range(nw):
+            top = i * stride
+            left = j * stride
+            tile = x[:, :, top:top + tile_size, left:left + tile_size].to(device)
+
+            with torch.no_grad():
+                result = oklab2srgb(model(srgb2oklab(tile)))
+
+            output[:, :, top:top + tile_size, left:left + tile_size] += result.cpu() * blend
+            weights[:, :, top:top + tile_size, left:left + tile_size] += blend
+
+    output /= weights.clamp(min=1e-8)
+    return output[:, :, :H, :W]
+
+
 def process_image(
     img_path: Path,
     model: BakeNet,
     srgb2oklab: Palette.sRGBtoOklabP,
     oklab2srgb: Palette.OklabPtosRGB,
     device: torch.device,
+    tile_size: int = TILE_SIZE,
+    tile_overlap: int = TILE_OVERLAP,
 ) -> torch.Tensor:
     img = Image.open(img_path).convert("RGB")
-    x = transforms.ToTensor()(img).unsqueeze(0).to(device)
+    x = transforms.ToTensor()(img).unsqueeze(0)
 
     _, _, H, W = x.shape
 
@@ -46,12 +98,19 @@ def process_image(
     if pad_h > 0 or pad_w > 0:
         x = F.pad(x, (0, pad_w, 0, pad_h), mode="reflect")
 
-    with torch.no_grad():
-        oklab = srgb2oklab(x)
-        pred = model(oklab)
-        result = oklab2srgb(pred)
+    _, _, pH, pW = x.shape
 
-    return result[:, :, :H, :W].squeeze(0).cpu().clamp(0.0, 1.0)
+    if pH <= tile_size and pW <= tile_size:
+        with torch.no_grad():
+            x_gpu = x.to(device)
+            result = oklab2srgb(model(srgb2oklab(x_gpu)))
+        result = result.cpu()
+    else:
+        result = _tiled_forward(
+            x, model, srgb2oklab, oklab2srgb, device, tile_size, tile_overlap
+        )
+
+    return result[:, :, :H, :W].squeeze(0).clamp(0.0, 1.0)
 
 
 def main():

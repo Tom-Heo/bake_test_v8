@@ -58,6 +58,8 @@ def main():
             result_tensor = process_image(
                 Path(image_path), model, srgb2oklab, oklab2srgb, device
             )
+            if device.type == "cuda":
+                torch.cuda.empty_cache()
 
             output_dir = tempfile.mkdtemp()
             output_name = f"{Path(image_path).stem}_baked.png"
